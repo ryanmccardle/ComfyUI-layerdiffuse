@@ -363,9 +363,18 @@ class TransparentVAEDecoder:
 
         pixel = pixel.to(device=self.load_device, dtype=self.dtype)
         latent = latent.to(device=self.load_device, dtype=self.dtype)
+
         # y.shape = [B, C=4, H, W]
         y = self.estimate_augmented(pixel, latent)
         y = y.clip(0, 1)
         assert y.shape[1] == 4
-        # Restore image to original device of input image.
-        return y.to(pixel_device, dtype=pixel_dtype)
+
+        # Rearrange channels to correct RGBA order
+        reordered_y = torch.zeros_like(y)
+        reordered_y[:, 3:4, :, :] = y[:, 0:1, :, :]  # Alpha channel to last position
+        reordered_y[:, 0:1, :, :] = y[:, 1:2, :, :]  # R
+        reordered_y[:, 1:2, :, :] = y[:, 2:3, :, :]  # G
+        reordered_y[:, 2:3, :, :] = y[:, 3:4, :, :]  # B
+
+        # Restore image to original device of input image
+        return reordered_y.to(pixel_device, dtype=pixel_dtype)
