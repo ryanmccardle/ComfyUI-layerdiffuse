@@ -21,3 +21,5 @@ class StableDiffusionVersion(Enum):
 
     SD1x = "SD15"
     SDXL = "SDXL"
+    FLUX = "FLUX"
+    FLUXSCHNELL = "FLUXSCHNELL"

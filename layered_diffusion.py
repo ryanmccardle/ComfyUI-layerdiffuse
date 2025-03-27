@@ -47,6 +47,7 @@ class LayeredDiffusionDecode:
                     [
                         StableDiffusionVersion.SD1x.value,
                         StableDiffusionVersion.SDXL.value,
+                        StableDiffusionVersion.FLUX.value,
                     ],
                     {
                         "default": StableDiffusionVersion.SDXL.value,
@@ -79,6 +80,12 @@ class LayeredDiffusionDecode:
         elif sd_version == StableDiffusionVersion.SDXL:
             url = "https://huggingface.co/LayerDiffusion/layerdiffusion-v1/resolve/main/vae_transparent_decoder.safetensors"
             file_name = "vae_transparent_decoder.safetensors"
+        elif (
+            sd_version == StableDiffusionVersion.FLUX
+            or sd_version == StableDiffusionVersion.FLUXSCHNELL
+        ):
+            url = "https://huggingface.co/rmccardle/test/resolve/main/Flux_TransparentVAE.safetensors"
+            file_name = "Flux_TransparentVAE.safetensors"
 
         if not self.vae_transparent_decoder.get(sd_version):
             model_path = load_file_from_url(
@@ -150,6 +157,7 @@ class LayeredDiffusionDecodeSplit(LayeredDiffusionDecodeRGBA):
                     [
                         StableDiffusionVersion.SD1x.value,
                         StableDiffusionVersion.SDXL.value,
+                        StableDiffusionVersion.FLUX.value,
                     ],
                     {
                         "default": StableDiffusionVersion.SDXL.value,
@@ -255,6 +263,7 @@ class LayeredDiffusionBase:
             model_dir=layer_model_root,
             file_name=self.model_file_name,
         )
+
         def pad_diff_weight(v):
             if len(v) == 1:
                 return ("diff", [v[0], {"pad_weight": True}])
@@ -305,6 +314,10 @@ def get_model_sd_version(model: ModelPatcher) -> StableDiffusionVersion:
     ):
         # SD15 and SD20 are compatible with each other.
         return StableDiffusionVersion.SD1x
+    elif isinstance(
+        model_config, (comfy.supported_models.Flux, comfy.supported_models.FluxSchnell)
+    ):
+        return StableDiffusionVersion.FLUX
     else:
         raise Exception(f"Unsupported SD Version: {type(model_config)}.")
 

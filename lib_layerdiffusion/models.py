@@ -10,19 +10,29 @@ from diffusers.models.modeling_utils import ModelMixin
 import importlib.metadata
 from packaging.version import parse
 
-diffusers_version = importlib.metadata.version('diffusers')
+diffusers_version = importlib.metadata.version("diffusers")
+
 
 def check_diffusers_version(min_version="0.25.0"):
     assert parse(diffusers_version) >= parse(
         min_version
     ), f"diffusers>={min_version} requirement not satisfied. Please install correct diffusers version."
 
+
 check_diffusers_version()
 
 if parse(diffusers_version) >= parse("0.29.0"):
-    from diffusers.models.unets.unet_2d_blocks import UNetMidBlock2D, get_down_block, get_up_block
+    from diffusers.models.unets.unet_2d_blocks import (
+        UNetMidBlock2D,
+        get_down_block,
+        get_up_block,
+    )
 else:
-    from diffusers.models.unet_2d_blocks import UNetMidBlock2D, get_down_block, get_up_block
+    from diffusers.models.unet_2d_blocks import (
+        UNetMidBlock2D,
+        get_down_block,
+        get_up_block,
+    )
 
 
 def zero_module(module):
@@ -68,6 +78,7 @@ class UNet1024(ModelMixin, ConfigMixin):
         self,
         in_channels: int = 3,
         out_channels: int = 3,
+        latent_in_channels: int = 4,
         down_block_types: Tuple[str] = (
             "DownBlock2D",
             "DownBlock2D",
@@ -105,7 +116,7 @@ class UNet1024(ModelMixin, ConfigMixin):
             in_channels, block_out_channels[0], kernel_size=3, padding=(1, 1)
         )
         self.latent_conv_in = zero_module(
-            nn.Conv2d(4, block_out_channels[2], kernel_size=1)
+            nn.Conv2d(latent_in_channels, block_out_channels[2], kernel_size=1)
         )
 
         self.down_blocks = nn.ModuleList([])
@@ -253,8 +264,38 @@ class TransparentVAEDecoder:
         self.load_device = device
         self.dtype = dtype
 
-        model = UNet1024(in_channels=3, out_channels=4)
-        model.load_state_dict(sd, strict=True)
+        # Check if the checkpoint has a different latent dimension
+        latent_in_channels = 4
+        for k, v in sd.items():
+            if k.endswith("latent_conv_in.weight") or k.endswith(
+                "decoder.latent_conv_in.weight"
+            ):
+                latent_in_channels = v.shape[1]
+                break
+
+        model = UNet1024(
+            in_channels=3, out_channels=4, latent_in_channels=latent_in_channels
+        )
+
+        # Check if keys need remapping
+        if all(
+            k.startswith("decoder.")
+            for k in sd.keys()
+            if not k.startswith("encoder.") and not k.startswith("sd_vae.")
+        ):
+            # Create a new state dict with remapped keys
+            remapped_sd = {}
+            for k, v in sd.items():
+                if k.startswith("decoder."):
+                    # Remove "decoder." prefix
+                    new_key = k[len("decoder.") :]
+                    remapped_sd[new_key] = v
+
+            # Load with the remapped state dict
+            model.load_state_dict(remapped_sd, strict=True)
+        else:
+            model.load_state_dict(sd, strict=True)
+
         model.to(self.load_device, dtype=self.dtype)
         model.eval()
         self.model = model
@@ -300,11 +341,11 @@ class TransparentVAEDecoder:
 
         result = torch.stack(result, dim=0)
         if self.load_device == torch.device("mps"):
-            '''
+            """
             In case that apple silicon devices would crash when calling torch.median() on tensors
             in gpu vram with dimensions higher than 4, we move it to cpu, call torch.median()
             and then move the result back to gpu.
-            '''
+            """
             median = torch.median(result.cpu(), dim=0).values
             median = median.to(device=self.load_device, dtype=self.dtype)
         else:
